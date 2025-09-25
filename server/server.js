@@ -1,27 +1,33 @@
-const mqtt = require('mqtt');
+// server.js
+const express = require('express');
+const aedes = require('aedes')();
+const http = require('http');
+const ws = require('ws');
 
-const MQTT_BROKER = 'ws://broker.hivemq.com:8000/mqtt'; // HiveMQ public broker
-const MQTT_TOPIC = 'busmate/location';
+const app = express();
 
-const client = mqtt.connect(MQTT_BROKER);
+// Health check for Render
+app.get('/', (req, res) => res.send('✅ Broker running'));
 
-client.on('connect', () => {
-  console.log('✅ MQTT Server Script Started and Connected to Broker!');
-  
-  client.subscribe(MQTT_TOPIC, (err) => {
-    if (!err) console.log(`Subscribed to topic: ${MQTT_TOPIC}`);
-  });
+// Port from Render
+const PORT = process.env.PORT || 8080;
+
+// HTTP server
+const server = http.createServer(app);
+
+// MQTT over WebSocket
+const wss = new ws.Server({ server });
+wss.on('connection', (wsClient) => {
+  const stream = ws.createWebSocketStream(wsClient);
+  aedes.handle(stream);
 });
 
-client.on('message', (topic, message) => {
-  try {
-    const data = JSON.parse(message.toString());
-    console.log('📍 Received location:', data);
-  } catch (err) {
-    console.error('❌ Invalid message format', err);
-  }
-});
+// Start server
+server.listen(PORT, () => console.log(`Server & MQTT broker on port ${PORT}`));
 
-client.on('error', (err) => {
-  console.error('❌ MQTT Error:', err);
+// Logging
+aedes.on('client', (client) => console.log(`Client connected: ${client.id}`));
+aedes.on('publish', (packet, client) => {
+  if (client) console.log(`${client.id} -> ${packet.topic}: ${packet.payload.toString()}`);
 });
+aedes.on('clientDisconnect', (client) => console.log(`Client disconnected: ${client.id}`));
